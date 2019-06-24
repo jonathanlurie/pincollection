@@ -1,5 +1,6 @@
 The pin collection makes it easy to create pins like in Google Map, but for ThreeJS.  
-First, the WebGL environment must be made with [Threeontext](https://github.com/jonathanlurie/threecontext), then you can:
+First, the WebGL environment must be made with [ThreeContext](https://github.com/jonathanlurie/threecontext), then you can:
+
 
 ```javascript
 let pc = new PinCollection(myThreeCtx)

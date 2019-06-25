@@ -1,6 +1,13 @@
 import { Object3D, BufferGeometry, Float32BufferAttribute, Points, AxesHelper, Color, ShaderMaterial } from 'three';
 import EventManager from '@jonathanlurie/eventmanager';
 
+const EVENT_SUFFIX = {
+  DBL_CLICK: '_DOUBLECLICK_EVENT',
+  CLICK: '_CLICK_EVENT',
+  MOVE: '_MOVE_EVENT',
+  LEAVE: '_LEAVE_EVENT'
+};
+
 /**
  * Events expected:
  *
@@ -31,7 +38,8 @@ class PinCollection extends EventManager {
 
     this._threeContext._raycaster.params.Points.threshold = 500;
 
-    this._threeContext._renderer.domElement.addEventListener('dblclick', () => {
+
+    this._threeContext._renderer.domElement.addEventListener('dblclick', (evt) => {
       let intersections = that._threeContext.performRaycast({
         parent: that._container,
         emitEvent: false
@@ -41,7 +49,50 @@ class PinCollection extends EventManager {
       if(!intersections)
         return
 
-      that.emit(intersections[0].object.name, [intersections[0].object.name, intersections[0].position]);
+      let eventName = `${intersections[0].object.name}${EVENT_SUFFIX.DBL_CLICK}`;
+      that.emit(eventName, [intersections[0].object.name, intersections[0].point, evt]);
+    }, false);
+
+
+    let currentlyHovered = null;
+    let throttleDelay = 100;
+    let lastMoveTimestamp = 0;
+    this._threeContext._renderer.domElement.addEventListener('mousemove', (evt) => {
+
+      let now = Date.now();
+      if((now - lastMoveTimestamp)<=throttleDelay){
+        return
+      }
+      lastMoveTimestamp = now;
+
+      let intersections = that._threeContext.performRaycast({
+        parent: that._container,
+        emitEvent: false
+      });
+      // console.log(intersections)
+      that._unHoverAll();
+
+      if(!intersections){
+        that.emit(`${currentlyHovered}${EVENT_SUFFIX.LEAVE}`, [currentlyHovered, evt]);
+        currentlyHovered = null;
+        return
+      }
+
+
+
+      let currentId = intersections[0].object.name;
+
+      if(currentlyHovered && currentlyHovered !== currentId){
+        that.emit(`${currentlyHovered}${EVENT_SUFFIX.LEAVE}`, [currentlyHovered, evt]);
+      }
+
+      currentlyHovered = currentId;
+
+
+
+      intersections[0].object.material.uniforms.hovered.value = true;
+      that.emit(`${currentId}${EVENT_SUFFIX.MOVE}`, [currentId, intersections[0].point, evt]);
+
     }, false);
 
   }
@@ -99,7 +150,9 @@ class PinCollection extends EventManager {
    * @param {string} options.id - the id to attribute to the mesh once it will be part of the collection. Automatically generated if not provided
    * @param {boolean} options.makeVisible - if true, the mesh will be added and made visible once loaded. If false, it's just going to be parsed and will have to be added later using its id (default: true)
    * @param {string} options.color - the color to apply to the mesh in the format '#FFFFFF' (default: '#FFFFFF', does not apply if a material is given)
-   * @param {Function} options.callback - callback associated with this pin
+   * @param {Function} options.onDoubleClick - callback associated with doubleclicking on this pin
+   * @param {Function} options.onMouseMove - callback associated with hovering this pin
+   * @param {Function} options.onLeave - callback associated with no longer hovering this pin
    */
   addPin(position, options = {}){
     let that = this;
@@ -114,8 +167,16 @@ class PinCollection extends EventManager {
     let size = 'size' in options ? options.size : 1000;
     let constantSize = 'constantSize' in options ? options.constantSize : false;
 
-    if('callback' in options){
-      this.on(id, options.callback);
+    if('onDoubleClick' in options){
+      this.on(`${id}${EVENT_SUFFIX.DBL_CLICK}`, options.onDoubleClick);
+    }
+
+    if('onMouseMove' in options){
+      this.on(`${id}${EVENT_SUFFIX.MOVE}`, options.onMouseMove);
+    }
+
+    if('onLeave' in options){
+      this.on(`${id}${EVENT_SUFFIX.LEAVE}`, options.onLeave);
     }
 
 
@@ -195,12 +256,17 @@ class PinCollection extends EventManager {
 
       fragment: `
       uniform vec3 color;
+      uniform bool hovered;
 
       void main() {
         vec2 uv = vec2( gl_PointCoord.x -0.5, 1.0 - gl_PointCoord.y-0.5 );
         float dFromCenter = sqrt(uv.x*uv.x + uv.y*uv.y);
         float ringStart = 0.35;
         vec3 ringColor = color * 0.5;
+
+        if(hovered){
+          ringColor = vec3(1., 1., 1.);
+        }
 
         if(dFromCenter > 0.5){
           discard;
@@ -214,6 +280,7 @@ class PinCollection extends EventManager {
 
     let uniforms = {
       size: { value: pointSize},
+      hovered: { value: false },
       color: { type: "c", value: new Color(color) },
     };
 
@@ -230,6 +297,14 @@ class PinCollection extends EventManager {
     return material
   }
 
+
+  _unHoverAll(){
+    let ids = Object.keys(this._collection);
+    for(let i=0; i<ids.length; i++){
+      let pin = this._collection[ids[i]];
+      pin.material.uniforms.hovered.value = false;
+    }
+  }
 
 }
 

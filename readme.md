@@ -14,19 +14,21 @@ pc.addPin({x: 0, y: 0, z: 0},
   constantSize: false, // makes the point having a constant size on screen, no matter the camera zoom
   callback: function(pinId, position){ // this is what will happen when double clicking on the pin
     console.log(`callback A: The pin ${pinId} was clicked at position ${position}.`)
+    alert('This is the purple pin.')
   }
 })
 
 
 pc.addPin({x: 1000, y: 0, z: 0},
 {
-  size: 500, // default: 300
+  size: 1000, // default: 300
   id: 'the other point', // random large int if not provided
   makeVisible: true, // default: true
   color: '#ffff00', // default: '#ffffff'
   constantSize: false, // makes the point having a constant size on screen, no matter the camera zoom
   callback: function(pinId, position){ // this is what will happen when double clicking on the pin
     console.log(`callback B: The pin ${pinId} was clicked at position ${position}.`)
+    alert('This is the yellow pin.')
   }
 })
 ```

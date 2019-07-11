@@ -1,4 +1,4 @@
-import { Object3D, BufferGeometry, Float32BufferAttribute, Points, AxesHelper, Color, ShaderMaterial } from 'three';
+import { Object3D, Color, SpriteMaterial, TextureLoader, Sprite, CanvasTexture } from 'three';
 import EventManager from '@jonathanlurie/eventmanager';
 
 const EVENT_SUFFIX = {
@@ -78,21 +78,17 @@ class PinCollection extends EventManager {
         return
       }
 
-
-
       let currentId = intersections[0].object.name;
-
       if(currentlyHovered && currentlyHovered !== currentId){
         that.emit(`${currentlyHovered}${EVENT_SUFFIX.LEAVE}`, [currentlyHovered, evt]);
       }
 
       currentlyHovered = currentId;
-
-
-
-      intersections[0].object.material.uniforms.hovered.value = true;
-      that.emit(`${currentId}${EVENT_SUFFIX.MOVE}`, [currentId, intersections[0].point, evt]);
-
+      let pin = intersections[0].object;
+      pin.userData.hovered = true;
+      pin.material.color.addScalar(0.3);
+      pin.material.needsUpdate = true;
+      that.emit(`${currentId}${EVENT_SUFFIX.MOVE}`, [currentId, pin.position, evt]);
     }, false);
 
   }
@@ -142,58 +138,109 @@ class PinCollection extends EventManager {
 
 
 
-  /**
-   * Load a mesh file from a distant file, with the provided url.
-   * @param {Object} position - object in shape of {x: Number, y: Number, z: Number}
-   * @param {object} options - the options object
-   * @param {number} options.size - size of each point (default: 1000, as the space unit is probably going to be micron)
-   * @param {string} options.id - the id to attribute to the mesh once it will be part of the collection. Automatically generated if not provided
-   * @param {boolean} options.makeVisible - if true, the mesh will be added and made visible once loaded. If false, it's just going to be parsed and will have to be added later using its id (default: true)
-   * @param {string} options.color - the color to apply to the mesh in the format '#FFFFFF' (default: '#FFFFFF', does not apply if a material is given)
-   * @param {Function} options.onDoubleClick - callback associated with doubleclicking on this pin
-   * @param {Function} options.onMouseMove - callback associated with hovering this pin
-   * @param {Function} options.onLeave - callback associated with no longer hovering this pin
-   */
-  addPin(position, options = {}){
-    let that = this;
-    let id = 'id' in options ? options.id : Math.random().toString().split('.')[1];
 
-    if(id in this._collection){
-      return this.emit('onPinWarning', ['A pin with such id is already loaded.', id])
+    addPin(position, options = {}){
+      let that = this;
+      let id = 'id' in options ? options.id : Math.random().toString().split('.')[1];
+
+      if(id in this._collection){
+        return this.emit('onPinWarning', ['A pin with such id is already loaded.', id])
+      }
+
+      let makeVisible = 'makeVisible' in options ? options.makeVisible : true;
+      let color = new Color('color' in options ? options.color : '#FFFFFF');
+      let size = 'size' in options ? options.size : 1000;
+      let constantSize = 'constantSize' in options ? options.constantSize : false;
+      let textureUrl = 'textureUrl' in options ? options.textureUrl : null;
+
+      if('onDoubleClick' in options){
+        this.on(`${id}${EVENT_SUFFIX.DBL_CLICK}`, options.onDoubleClick);
+      }
+
+      if('onMouseMove' in options){
+        this.on(`${id}${EVENT_SUFFIX.MOVE}`, options.onMouseMove);
+      }
+
+      if('onLeave' in options){
+        this.on(`${id}${EVENT_SUFFIX.LEAVE}`, options.onLeave);
+      }
+
+      let material = new SpriteMaterial( { color: color } );
+      material.userData.originalColor = color;
+      let sprite = null;
+      if(textureUrl){
+        let textureLoader = new TextureLoader();
+        sprite = textureLoader.load(textureUrl);
+      } else {
+        sprite = this._generateStarTexture(); // this._generateCircleTexture()
+      }
+      material.map = sprite;
+
+      let pin = new Sprite( material );
+      pin.userData.hovered = false;
+      pin.scale.set( size, size, size );
+      pin.position.set(position.x, position.y, position.z);
+
+      pin.name = id;
+      pin.visible = makeVisible;
+      that._collection[id] = pin;
+      that._container.add(pin);
+
+      that.emit('onPinCreated', [pin, id]);
     }
 
-    let makeVisible = 'makeVisible' in options ? options.makeVisible : true;
-    let color = 'color' in options ? options.color : '#FFFFFF';
-    let size = 'size' in options ? options.size : 1000;
-    let constantSize = 'constantSize' in options ? options.constantSize : false;
 
-    if('onDoubleClick' in options){
-      this.on(`${id}${EVENT_SUFFIX.DBL_CLICK}`, options.onDoubleClick);
-    }
-
-    if('onMouseMove' in options){
-      this.on(`${id}${EVENT_SUFFIX.MOVE}`, options.onMouseMove);
-    }
-
-    if('onLeave' in options){
-      this.on(`${id}${EVENT_SUFFIX.LEAVE}`, options.onLeave);
-    }
-
-
-    let material = that._generatePointCloudMaterial(color, size, constantSize);
-    let geometry = new BufferGeometry();
-    geometry.addAttribute( 'position', new Float32BufferAttribute( [position.x, position.y, position.z], 3 ) );
-
-    let pin = new Points( geometry, material );
-
-    pin.name = id;
-    pin.visible = makeVisible;
-    that._collection[id] = pin;
-    that._container.add(pin);
-
-    that.emit('onPinCreated', [pin, id]);
+  _generateCircleTexture(){
+    let canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 512;
+    let ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    ctx.arc(256, 256, 254, 0, 2 * Math.PI);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+    let texture = new CanvasTexture(canvas);
+    return texture
   }
 
+
+  _generateStarTexture(spikes=16, spikiness=0.3){
+    let canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 512;
+    let ctx = canvas.getContext('2d');
+    let cx = canvas.width / 2;
+    let cy = canvas.height / 2;
+    let outerRadius = canvas.width / 2;
+    let innerRadius = outerRadius * (1 - spikiness);
+    let rot=Math.PI/2*3;
+    let x=cx;
+    let y=cy;
+    let step=Math.PI/spikes;
+
+    ctx.beginPath();
+    ctx.moveTo(cx,cy-outerRadius);
+    for(let i=0;i<spikes;i++){
+      x=cx+Math.cos(rot)*outerRadius;
+      y=cy+Math.sin(rot)*outerRadius;
+      ctx.lineTo(x,y);
+      rot+=step;
+
+      x=cx+Math.cos(rot)*innerRadius;
+      y=cy+Math.sin(rot)*innerRadius;
+      ctx.lineTo(x,y);
+      rot+=step;
+    }
+    ctx.lineTo(cx,cy-outerRadius);
+    ctx.closePath();
+    //ctx.lineWidth=5;
+    //ctx.strokeStyle='blue';
+    //ctx.stroke();
+    ctx.fillStyle='#ffffff';
+    ctx.fill();
+    let texture = new CanvasTexture(canvas);
+    return texture
+  }
 
   /**
    * Add a callback to a specific pin
@@ -207,102 +254,15 @@ class PinCollection extends EventManager {
   }
 
 
-
-  /**
-   *
-   * TEST
-   */
-  addPointCloud(nbPoints=1000, size=100, color='#FF0000', constantSize=false){
-    // https://github.com/mrdoob/three.js/blob/master/examples/webgl_points_sprites.html
-
-    let axesHelper = new AxesHelper(100);
-    // axesHelper.position.set(geometry.boundingSphere.center.x, geometry.boundingSphere.center.y, geometry.boundingSphere.center.z)
-    this._threeContext.getScene().add(axesHelper);
-
-    let geometry = new BufferGeometry();
-    let vertices = [];
-    // let textureLoader = new THREE.TextureLoader();
-
-
-    for ( let i = 0; i < nbPoints; i ++ ) {
-      let x = Math.random() * 10000;
-      let y = Math.random() * 10000;
-      let z = Math.random() * 10000;
-      vertices.push( x, y, z );
-    }
-
-    geometry.addAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
-
-    // material
-    var material = this._generatePointCloudMaterial(color, size, constantSize);
-
-    let particles = new Points( geometry, material );
-
-    this._collection['someparticle'] = particles;
-    this._container.add(particles);
-  }
-
-
-  _generatePointCloudMaterial(color='#FFFFFF', pointSize=100, constantSize=false){
-    let shader = {
-      vertex: `
-      uniform float size;
-
-      void main() {
-        vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
-        gl_PointSize = size ${constantSize ? '' : '* ( size / -mvPosition.z )'};
-        gl_Position = projectionMatrix * mvPosition;
-      }`,
-
-      fragment: `
-      uniform vec3 color;
-      uniform bool hovered;
-
-      void main() {
-        vec2 uv = vec2( gl_PointCoord.x -0.5, 1.0 - gl_PointCoord.y-0.5 );
-        float dFromCenter = sqrt(uv.x*uv.x + uv.y*uv.y);
-        float ringStart = 0.35;
-        vec3 ringColor = color * 0.5;
-
-        if(hovered){
-          ringColor = vec3(1., 1., 1.);
-        }
-
-        if(dFromCenter > 0.5){
-          discard;
-        }else if(dFromCenter > ringStart) {
-          gl_FragColor = vec4(ringColor, 1.0);
-        } else {
-          gl_FragColor = vec4(color, 1.0);
-        }
-      }`
-    };
-
-    let uniforms = {
-      size: { value: pointSize},
-      hovered: { value: false },
-      color: { type: "c", value: new Color(color) },
-    };
-
-    // material
-    var material = new ShaderMaterial( {
-      uniforms:       uniforms,
-      vertexShader:   shader.vertex,
-      fragmentShader: shader.fragment,
-      transparent:    false,
-      // blending: THREE.AdditiveBlending,
-      //depthTest: false, // default: true
-    });
-
-    return material
-  }
-
-
   _unHoverAll(){
     let ids = Object.keys(this._collection);
     for(let i=0; i<ids.length; i++){
       let pin = this._collection[ids[i]];
-      pin.material.uniforms.hovered.value = false;
+      if(pin.userData.hovered){
+        pin.userData.hovered = false;
+        pin.material.color = pin.material.userData.originalColor.clone();
+        pin.material.needsUpdate = true;
+      }
     }
   }
 

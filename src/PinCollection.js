@@ -50,7 +50,7 @@ class PinCollection extends EventManager {
         return
 
       let eventName = `${intersections[0].object.name}${EVENT_SUFFIX.DBL_CLICK}`
-      that.emit(eventName, [intersections[0].object.name, intersections[0].point, evt])
+      that.emit(eventName, [intersections[0].object.name, intersections[0].object.position, evt])
     }, false)
 
 
@@ -124,6 +124,7 @@ class PinCollection extends EventManager {
 
 
   /**
+   * TODO
    * NOT WORKING FOR NOW
    */
   detach(id){
@@ -135,60 +136,86 @@ class PinCollection extends EventManager {
   }
 
 
+  /**
+   * Add a pin to the collection. This pin can have an image or be a circle, or a star
+   * @param {Object} position - 3D coordinates such as {x: Number, y: Number, z: Number}
+   * @param {Object} options - the option object
+   * @param {string} options.id - the unique ID of this pin within the collection. (default: auto generated)
+   * @param {boolean} options.makeVisible - whether to make this pin visible or not by default (default: true)
+   * @param {String} options.color - hex string color of the pin (default: '#ffffff')
+   * @param {Number} options.size - size (diameter of a circle) of the pin (default: 1000)
+   * @param {string} options.textureUrl - URL of an image (png or jpg) to load on the pin (default: null)
+   * @param {String} options.shape - shape of the pin. Can be 'circle' or 'star'. Not compatible with options.textureUrl (default: circle)
+   * @param {Number} options.sides - only with options.shape is 'star'. Number of branches in the star (default: 16)
+   * @param {Number} options.spikiness - only with options.shape to 'star'. In range [0, 1], very spiky when 0, very not spiky when 1. (default: 0.3)
+   * @param {Function} options.onDoubleClick - Callback function called when the pin is double-clicked. Will be called with the args: (pinID: String, pinPosition: {x: Number, y: Number, z: Number}, dblclickMouseEvent: Object)
+   * @param {Function} options.onMouseMove - Callback function called when the pin is hovered. Will be called with the args: (pinID: String, pinPosition: {x: Number, y: Number, z: Number}, dblclickMouseEvent: Object)
+   * @param {Function} options.onLeave - Callback function called when the pointer leaves the pin. Will be called with the args: (pinID: String, dblclickMouseEvent: Object)
+   */
+  addPin(position, options = {}){
+    let that = this
+    let id = 'id' in options ? options.id : Math.random().toString().split('.')[1]
 
-
-
-
-    addPin(position, options = {}){
-      let that = this
-      let id = 'id' in options ? options.id : Math.random().toString().split('.')[1]
-
-      if(id in this._collection){
-        return this.emit('onPinWarning', ['A pin with such id is already loaded.', id])
-      }
-
-      let makeVisible = 'makeVisible' in options ? options.makeVisible : true
-      let color = new THREE.Color('color' in options ? options.color : '#FFFFFF')
-      let size = 'size' in options ? options.size : 1000
-      let constantSize = 'constantSize' in options ? options.constantSize : false
-      let textureUrl = 'textureUrl' in options ? options.textureUrl : null
-
-      if('onDoubleClick' in options){
-        this.on(`${id}${EVENT_SUFFIX.DBL_CLICK}`, options.onDoubleClick)
-      }
-
-      if('onMouseMove' in options){
-        this.on(`${id}${EVENT_SUFFIX.MOVE}`, options.onMouseMove)
-      }
-
-      if('onLeave' in options){
-        this.on(`${id}${EVENT_SUFFIX.LEAVE}`, options.onLeave)
-      }
-
-      let material = new THREE.SpriteMaterial( { color: color } )
-      material.userData.originalColor = color
-      let sprite = null
-      if(textureUrl){
-        let textureLoader = new THREE.TextureLoader()
-        sprite = textureLoader.load(textureUrl)
-      } else {
-        sprite = this._generateStarTexture() // this._generateCircleTexture()
-      }
-      material.map = sprite
-
-      let pin = new THREE.Sprite( material )
-      pin.userData.hovered = false
-      pin.scale.set( size, size, size )
-      pin.position.set(position.x, position.y, position.z)
-
-      pin.name = id
-      pin.visible = makeVisible
-      that._collection[id] = pin
-      that._container.add(pin)
-
-      that.emit('onPinCreated', [pin, id])
+    if(id in this._collection){
+      return this.emit('onPinWarning', ['A pin with such id is already loaded.', id])
     }
 
+    let makeVisible = 'makeVisible' in options ? options.makeVisible : true
+    let color = new THREE.Color('color' in options ? options.color : '#FFFFFF')
+    let size = 'size' in options ? options.size : 1000
+    let textureUrl = 'textureUrl' in options ? options.textureUrl : null
+
+
+    if('onDoubleClick' in options){
+      this.on(`${id}${EVENT_SUFFIX.DBL_CLICK}`, options.onDoubleClick)
+    }
+
+    if('onMouseMove' in options){
+      this.on(`${id}${EVENT_SUFFIX.MOVE}`, options.onMouseMove)
+    }
+
+    if('onLeave' in options){
+      this.on(`${id}${EVENT_SUFFIX.LEAVE}`, options.onLeave)
+    }
+
+    let material = new THREE.SpriteMaterial( { color: color } )
+    material.userData.originalColor = color
+    let sprite = null
+    if(textureUrl){
+      let textureLoader = new THREE.TextureLoader()
+      sprite = textureLoader.load(textureUrl)
+    } else {
+      sprite = this._generateShapeTexture(options)
+    }
+    material.map = sprite
+
+    let pin = new THREE.Sprite( material )
+    pin.userData.hovered = false
+    pin.scale.set( size, size, size )
+    pin.position.set(position.x, position.y, position.z)
+
+    pin.name = id
+    pin.visible = makeVisible
+    that._collection[id] = pin
+    that._container.add(pin)
+
+    that.emit('onPinCreated', [pin, id])
+  }
+
+
+  _generateShapeTexture(options){
+    let shape = 'shape' in options ? options.shape : 'circle'
+
+    switch (shape) {
+      case 'star':
+        return  this._generateStarTexture(options)
+        break;
+
+      case 'circle':
+      default:
+        return this._generateCircleTexture()
+    }
+  }
 
   _generateCircleTexture(){
     let canvas = document.createElement("canvas")
@@ -204,7 +231,12 @@ class PinCollection extends EventManager {
   }
 
 
-  _generateStarTexture(spikes=16, spikiness=0.3){
+  /**
+   * @private
+   */
+  _generateStarTexture(options){
+    let spikes = 'sides' in options ? options.sides : 16
+    let spikiness = 'spikiness' in options ? options.spikiness : 0.3
     let canvas = document.createElement("canvas")
     canvas.width = 512
     canvas.height = 512
@@ -254,6 +286,9 @@ class PinCollection extends EventManager {
   }
 
 
+  /**
+   * @private
+   */
   _unHoverAll(){
     let ids = Object.keys(this._collection)
     for(let i=0; i<ids.length; i++){

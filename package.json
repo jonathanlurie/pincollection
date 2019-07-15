@@ -1,7 +1,7 @@
 {
   "name": "pincollection",
-  "version": "0.1.2",
-  "description": "Manage a collection of meshes",
+  "version": "0.1.3",
+  "description": "Manage a collection of pins (aka. markers)",
   "repository": "jonathanlurie/pincollection",
   "main": "lib/pincollection.js",
   "module": "es/pincollection.js",
